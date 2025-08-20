@@ -138,31 +138,6 @@ If successful, you should see:
 - Node.js 18+
 - Neon PostgreSQL database account
 
-### 🚀 Quick Setup (Replit)
-
-1. **Install Dependencies**
-   ```bash
-   npm install
-   ```
-
-2. **Configure Secrets** (in Replit Secrets tab 🔒)
-   ```
-   DATABASE_URL = your-complete-neon-connection-string
-   SESSION_SECRET = your-random-secret-key
-   ```
-
-3. **Initialize Database**
-   ```bash
-   npm run db:push
-   ```
-
-4. **Start Application**
-   ```bash
-   npm run dev
-   ```
-
-The app will be available at your Replit URL.
-
 ### 💻 Local Development Setup
 
 1. **Clone Repository**
