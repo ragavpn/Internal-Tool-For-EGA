@@ -82,15 +82,6 @@ A mobile-first industrial device management application built with React, TypeSc
 
 #### Step 2: Configure Secrets
 
-##### In Replit:
-1. Click the 🔒 **Secrets** tab in sidebar
-2. Add these exact secrets:
-
-| Key | Value | Example |
-|-----|-------|---------|
-| `DATABASE_URL` | Your complete Neon connection string | `postgresql://user:pass@ep-abc-123.us-east-1.aws.neon.tech/neondb?sslmode=require` |
-| `SESSION_SECRET` | Any random 32+ character string | `device-manager-super-secret-key-2024-change-this` |
-
 ##### For Local Development:
 Create a `.env` file in the root directory:
 ```bash
