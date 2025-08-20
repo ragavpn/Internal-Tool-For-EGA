@@ -1,6 +1,6 @@
 # Overview
 
-This is a full-stack feedback management system called "FeedbackFlow" that provides sentiment analysis capabilities for customer feedback. The application allows users to create customizable feedback forms, collect responses, and analyze sentiment using AI. It features brand template management, real-time analytics dashboard, and comprehensive feedback visualization.
+This is a full-stack industrial device management system that enables companies to track devices, schedule maintenance, and manage equipment efficiently. The application features employee authentication, device CRUD operations, maintenance planning, and real-time dashboard analytics with a mobile-first responsive design.
 
 # User Preferences
 
@@ -36,11 +36,11 @@ Preferred communication style: Simple, everyday language.
 - **Express session middleware** for stateful authentication
 - User role-based access control with admin/user distinctions
 
-## AI Integration
-- **OpenAI GPT-4o** for sentiment analysis of feedback text
-- **Structured JSON responses** for consistent sentiment scoring and categorization
-- **Confidence scoring** and automatic fallback handling for API failures
-- **Category classification** for organizing feedback by topic (Product Quality, Customer Service, etc.)
+## Authentication System
+- **bcryptjs** for secure password encryption and validation
+- **Real-time password strength validation** with visual indicators and checklists
+- **Email validation** with instant feedback and verification
+- **Session-based authentication** with PostgreSQL session storage
 
 ## External Dependencies
 
@@ -49,9 +49,11 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle Kit** for database migrations and schema management
 - **connect-pg-simple** for session storage in PostgreSQL
 
-### AI & Analytics
-- **OpenAI API** for sentiment analysis and text classification
-- **Chart.js** for dashboard visualizations and analytics charts
+### Form Validation & UX
+- **Real-time form validation** with submit button state management
+- **Password strength indicators** with security requirement checklists
+- **Email format validation** with visual feedback
+- **Dark/Light mode support** with theme persistence
 
 ### UI & Styling
 - **Radix UI** component primitives for accessibility and interaction patterns
@@ -64,3 +66,4 @@ Preferred communication style: Simple, everyday language.
 - **ESBuild** for server-side bundling
 - **TypeScript** for type safety across the full stack
 - **Replit integration** for development environment and deployment
+- **Environment-based configuration** with .env support for database credentials
