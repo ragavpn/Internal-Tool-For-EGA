@@ -43,7 +43,7 @@ export default function DeviceChecks() {
       
       return apiRequest("POST", "/api/device-checks", {
         deviceId,
-        scheduledDate,
+        scheduledDate: scheduledDate.toISOString(),
         status: now > scheduledDate ? "delayed" : "completed",
         checkComment: checkComment || null,
         isDelayed: now > scheduledDate,

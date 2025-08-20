@@ -113,13 +113,9 @@ export class DatabaseStorage implements IStorage {
         .where(eq(deviceChecks.deviceId, result.device.id))
         .orderBy(desc(deviceChecks.completedDate));
 
-      const checks = deviceChecksResult.map(cr => ({
-        ...cr.check,
-        device: result.device,
-        checkedBy: cr.checkedBy!,
-      }));
+      const checks = deviceChecksResult.map(cr => cr.check);
 
-      const lastCheck = checks[0];
+      const lastCheck = checks[0] || null;
       const nextScheduledCheck = lastCheck 
         ? new Date(lastCheck.completedDate.getTime() + (result.device.plannedFrequencyWeeks * 7 * 24 * 60 * 60 * 1000))
         : new Date(result.device.createdAt!.getTime() + (result.device.plannedFrequencyWeeks * 7 * 24 * 60 * 60 * 1000));
@@ -128,17 +124,7 @@ export class DatabaseStorage implements IStorage {
 
       devicesWithChecks.push({
         ...result.device,
-        checks: checks.map(c => ({
-          id: c.id,
-          deviceId: c.deviceId,
-          checkedBy: c.checkedBy,
-          scheduledDate: c.scheduledDate,
-          completedDate: c.completedDate,
-          status: c.status,
-          checkComment: c.checkComment,
-          isDelayed: c.isDelayed,
-          createdAt: c.createdAt,
-        })),
+        checks,
         createdBy: result.createdBy,
         lastCheck,
         nextScheduledCheck,
@@ -232,13 +218,15 @@ export class DatabaseStorage implements IStorage {
 
   async getUpcomingChecks(daysAhead = 7): Promise<DeviceWithChecks[]> {
     const allDevices = await this.getDevices();
+    const now = new Date();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + daysAhead);
     
     return allDevices.filter(d => 
       d.nextScheduledCheck && 
       d.nextScheduledCheck <= futureDate && 
-      d.nextScheduledCheck >= new Date()
+      d.nextScheduledCheck >= now &&
+      !d.isOverdue
     );
   }
 
@@ -273,7 +261,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(deviceChecks.completedDate))
       .limit(10);
 
-    const recentChecks = recentChecksResult.map(r => ({
+    const recentChecks: DeviceCheckWithRelations[] = recentChecksResult.map(r => ({
       ...r.check,
       device: r.device!,
       checkedBy: r.checkedBy!,
