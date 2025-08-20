@@ -3,6 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
@@ -10,6 +11,7 @@ import Devices from "@/pages/Devices";
 import DeviceForm from "@/pages/DeviceForm";
 import DeviceChecks from "@/pages/DeviceChecks";
 import Planner from "@/pages/Planner";
+import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
 
 function AuthenticatedRouter() {
@@ -21,6 +23,7 @@ function AuthenticatedRouter() {
       <Route path="/devices/edit/:id" component={DeviceForm} />
       <Route path="/devices/:id/checks" component={DeviceChecks} />
       <Route path="/planner" component={Planner} />
+      <Route path="/profile" component={Profile} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -50,10 +53,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Router />
-        <Toaster />
-      </TooltipProvider>
+      <ThemeProvider>
+        <TooltipProvider>
+          <Router />
+          <Toaster />
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

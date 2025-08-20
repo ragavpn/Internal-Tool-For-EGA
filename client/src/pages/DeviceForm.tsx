@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { areRequiredFieldsFilled } from "@/lib/validation";
 import { ArrowLeft, Save, Wrench } from "lucide-react";
 import type { Device, InsertDevice } from "@shared/schema";
 
@@ -111,6 +112,10 @@ export default function DeviceForm() {
   };
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
+  
+  // Check if form is valid for submission
+  const requiredFields = ["name", "identificationNumber", "location", "plannedFrequencyWeeks"];
+  const isFormValid = areRequiredFieldsFilled(formData, requiredFields);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -223,7 +228,7 @@ export default function DeviceForm() {
               <div className="flex gap-4 pt-6">
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !isFormValid}
                   className="flex-1"
                   data-testid="button-save"
                 >

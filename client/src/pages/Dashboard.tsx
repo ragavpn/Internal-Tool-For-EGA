@@ -69,17 +69,18 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-gray-600 dark:text-gray-300">
                 Welcome, {employee?.name}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => logout()}
-                data-testid="button-logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
+              <Link href="/profile">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="button-profile"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

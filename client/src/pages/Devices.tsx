@@ -32,7 +32,7 @@ export default function Devices() {
   const filteredDevices = devices.filter(device => {
     const matchesSearch = device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          device.identificationNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesLocation = !selectedLocation || device.location === selectedLocation;
+    const matchesLocation = selectedLocation === "all" || !selectedLocation || device.location === selectedLocation;
     return matchesSearch && matchesLocation;
   });
 
@@ -95,7 +95,7 @@ export default function Devices() {
                   <SelectValue placeholder="Filter by location" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Locations</SelectItem>
+                  <SelectItem value="all">All Locations</SelectItem>
                   {locations.map(location => (
                     <SelectItem key={location} value={location}>
                       {location}

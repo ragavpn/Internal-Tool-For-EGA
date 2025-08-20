@@ -38,11 +38,11 @@ export default function Planner() {
     queryKey: ["/api/devices"],
   });
 
-  const filteredOverdueDevices = selectedLocation 
+  const filteredOverdueDevices = (selectedLocation && selectedLocation !== "all")
     ? overdueDevices.filter(device => device.location === selectedLocation)
     : overdueDevices;
 
-  const filteredUpcomingDevices = selectedLocation 
+  const filteredUpcomingDevices = (selectedLocation && selectedLocation !== "all")
     ? upcomingDevices.filter(device => device.location === selectedLocation)
     : upcomingDevices;
 
@@ -54,7 +54,7 @@ export default function Planner() {
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
       return new Date(device.lastCheck.completedDate) > oneWeekAgo;
     })
-    .filter(device => !selectedLocation || device.location === selectedLocation)
+    .filter(device => !selectedLocation || selectedLocation === "all" || device.location === selectedLocation)
     .sort((a, b) => {
       if (!a.lastCheck || !b.lastCheck) return 0;
       return new Date(b.lastCheck.completedDate).getTime() - new Date(a.lastCheck.completedDate).getTime();
@@ -103,7 +103,7 @@ export default function Planner() {
                     <SelectValue placeholder="Filter by location" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Locations</SelectItem>
+                    <SelectItem value="all">All Locations</SelectItem>
                     {locations.map(location => (
                       <SelectItem key={location} value={location}>
                         {location}
