@@ -1,195 +1,306 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { analyzeSentiment } from "./services/openai";
-import { insertBrandTemplateSchema, insertFeedbackFormSchema, insertFeedbackSchema } from "@shared/schema";
+import { insertEmployeeSchema, insertDeviceSchema, insertDeviceCheckSchema, loginSchema } from "@shared/schema";
 import { z } from "zod";
+import session from "express-session";
+import connectPg from "connect-pg-simple";
+
+// Session setup middleware
+function setupSession(app: Express) {
+  const PgStore = connectPg(session);
+  
+  app.use(session({
+    store: new PgStore({
+      conString: process.env.DATABASE_URL,
+      createTableIfMissing: false,
+      tableName: 'sessions',
+    }),
+    secret: process.env.SESSION_SECRET || 'device-management-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    },
+  }));
+}
+
+// Authentication middleware
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.session?.employee) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  next();
+}
+
+// Extend session type
+declare module 'express-session' {
+  interface SessionData {
+    employee: {
+      id: string;
+      employeeId: string;
+      email: string;
+      name: string;
+      role: string;
+    };
+  }
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Brand Templates API
-  app.get("/api/brand-templates", async (req, res) => {
-    try {
-      const templates = await storage.getBrandTemplates();
-      res.json(templates);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch brand templates" });
-    }
-  });
+  // Setup session middleware
+  setupSession(app);
 
-  app.post("/api/brand-templates", async (req, res) => {
+  // Authentication routes
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      const templateData = insertBrandTemplateSchema.parse(req.body);
-      const template = await storage.createBrandTemplate(templateData);
-      res.status(201).json(template);
+      const employeeData = insertEmployeeSchema.parse(req.body);
+      
+      // Check if employee already exists
+      const existingEmployee = await storage.getEmployeeByEmail(employeeData.email);
+      if (existingEmployee) {
+        return res.status(409).json({ message: "Employee with this email already exists" });
+      }
+
+      const employee = await storage.createEmployee(employeeData);
+      
+      // Store employee in session (excluding password)
+      req.session.employee = {
+        id: employee.id,
+        employeeId: employee.employeeId,
+        email: employee.email,
+        name: employee.name,
+        role: employee.role,
+      };
+
+      res.status(201).json({
+        id: employee.id,
+        employeeId: employee.employeeId,
+        email: employee.email,
+        name: employee.name,
+        role: employee.role,
+      });
     } catch (error) {
+      console.error("Registration error:", error);
       if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid template data", errors: error.errors });
+        res.status(400).json({ message: "Invalid registration data", errors: error.errors });
       } else {
-        res.status(500).json({ message: "Failed to create brand template" });
+        res.status(500).json({ message: "Failed to register employee" });
       }
     }
   });
 
-  app.put("/api/brand-templates/:id", async (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const credentials = loginSchema.parse(req.body);
+      const employee = await storage.authenticateEmployee(credentials);
+      
+      if (!employee) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // Store employee in session (excluding password)
+      req.session.employee = {
+        id: employee.id,
+        employeeId: employee.employeeId,
+        email: employee.email,
+        name: employee.name,
+        role: employee.role,
+      };
+
+      res.json({
+        id: employee.id,
+        employeeId: employee.employeeId,
+        email: employee.email,
+        name: employee.name,
+        role: employee.role,
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid login data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Login failed" });
+      }
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Logout failed" });
+      }
+      res.clearCookie('connect.sid');
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.session?.employee) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    res.json(req.session.employee);
+  });
+
+  // Devices API
+  app.get("/api/devices", requireAuth, async (req, res) => {
+    try {
+      const { location } = req.query;
+      const devices = await storage.getDevices(location as string);
+      res.json(devices);
+    } catch (error) {
+      console.error("Failed to fetch devices:", error);
+      res.status(500).json({ message: "Failed to fetch devices" });
+    }
+  });
+
+  app.get("/api/devices/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const updates = insertBrandTemplateSchema.partial().parse(req.body);
-      const template = await storage.updateBrandTemplate(id, updates);
+      const device = await storage.getDeviceById(id);
       
-      if (!template) {
-        return res.status(404).json({ message: "Brand template not found" });
+      if (!device) {
+        return res.status(404).json({ message: "Device not found" });
       }
       
-      res.json(template);
+      res.json(device);
     } catch (error) {
+      console.error("Failed to fetch device:", error);
+      res.status(500).json({ message: "Failed to fetch device" });
+    }
+  });
+
+  app.post("/api/devices", requireAuth, async (req, res) => {
+    try {
+      const deviceData = insertDeviceSchema.parse({
+        ...req.body,
+        createdBy: req.session.employee!.id,
+      });
+      
+      const device = await storage.createDevice(deviceData);
+      res.status(201).json(device);
+    } catch (error) {
+      console.error("Failed to create device:", error);
       if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid template data", errors: error.errors });
+        res.status(400).json({ message: "Invalid device data", errors: error.errors });
       } else {
-        res.status(500).json({ message: "Failed to update brand template" });
+        res.status(500).json({ message: "Failed to create device" });
       }
     }
   });
 
-  app.delete("/api/brand-templates/:id", async (req, res) => {
+  app.put("/api/devices/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.deleteBrandTemplate(id);
+      const updates = insertDeviceSchema.partial().parse(req.body);
+      const device = await storage.updateDevice(id, updates);
+      
+      if (!device) {
+        return res.status(404).json({ message: "Device not found" });
+      }
+      
+      res.json(device);
+    } catch (error) {
+      console.error("Failed to update device:", error);
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid device data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to update device" });
+      }
+    }
+  });
+
+  app.delete("/api/devices/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteDevice(id);
       
       if (!success) {
-        return res.status(404).json({ message: "Brand template not found" });
+        return res.status(404).json({ message: "Device not found" });
       }
       
       res.status(204).send();
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete brand template" });
+      console.error("Failed to delete device:", error);
+      res.status(500).json({ message: "Failed to delete device" });
     }
   });
 
-  // Feedback Forms API
-  app.get("/api/feedback-forms", async (req, res) => {
+  // Device checks API
+  app.get("/api/device-checks", requireAuth, async (req, res) => {
     try {
-      const forms = await storage.getFeedbackForms();
-      res.json(forms);
+      const { deviceId } = req.query;
+      const checks = await storage.getDeviceChecks(deviceId as string);
+      res.json(checks);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch feedback forms" });
+      console.error("Failed to fetch device checks:", error);
+      res.status(500).json({ message: "Failed to fetch device checks" });
     }
   });
 
-  app.post("/api/feedback-forms", async (req, res) => {
+  app.post("/api/device-checks", requireAuth, async (req, res) => {
     try {
-      const formData = insertFeedbackFormSchema.parse(req.body);
-      const form = await storage.createFeedbackForm(formData);
-      res.status(201).json(form);
+      const checkData = insertDeviceCheckSchema.parse({
+        ...req.body,
+        checkedBy: req.session.employee!.id,
+        completedDate: new Date(),
+      });
+      
+      const check = await storage.createDeviceCheck(checkData);
+      res.status(201).json(check);
     } catch (error) {
+      console.error("Failed to create device check:", error);
       if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid form data", errors: error.errors });
+        res.status(400).json({ message: "Invalid check data", errors: error.errors });
       } else {
-        res.status(500).json({ message: "Failed to create feedback form" });
+        res.status(500).json({ message: "Failed to create device check" });
       }
     }
   });
 
-  app.put("/api/feedback-forms/:id", async (req, res) => {
+  // Planning and status routes
+  app.get("/api/devices/overdue", requireAuth, async (req, res) => {
     try {
-      const { id } = req.params;
-      const updates = insertFeedbackFormSchema.partial().parse(req.body);
-      const form = await storage.updateFeedbackForm(id, updates);
-      
-      if (!form) {
-        return res.status(404).json({ message: "Feedback form not found" });
-      }
-      
-      res.json(form);
+      const overdueDevices = await storage.getOverdueDevices();
+      res.json(overdueDevices);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid form data", errors: error.errors });
-      } else {
-        res.status(500).json({ message: "Failed to update feedback form" });
-      }
+      console.error("Failed to fetch overdue devices:", error);
+      res.status(500).json({ message: "Failed to fetch overdue devices" });
     }
   });
 
-  // Feedback API
-  app.get("/api/feedback", async (req, res) => {
+  app.get("/api/devices/upcoming", requireAuth, async (req, res) => {
     try {
-      const { formId } = req.query;
-      const feedback = await storage.getFeedback(formId as string);
-      res.json(feedback);
+      const { days } = req.query;
+      const daysAhead = days ? parseInt(days as string) : 7;
+      const upcomingDevices = await storage.getUpcomingChecks(daysAhead);
+      res.json(upcomingDevices);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch feedback" });
+      console.error("Failed to fetch upcoming checks:", error);
+      res.status(500).json({ message: "Failed to fetch upcoming checks" });
     }
   });
 
-  app.post("/api/feedback", async (req, res) => {
+  // Locations API
+  app.get("/api/locations", requireAuth, async (req, res) => {
     try {
-      const feedbackData = insertFeedbackSchema.parse(req.body);
-      
-      // Create initial feedback record
-      let feedback = await storage.createFeedback(feedbackData);
-      
-      // Analyze sentiment for text responses
-      const textResponses = Object.values(feedbackData.responses)
-        .filter(response => typeof response === 'string' && response.length > 10)
-        .join(' ');
-      
-      if (textResponses) {
-        const sentimentAnalysis = await analyzeSentiment(textResponses);
-        
-        // Update feedback with sentiment analysis
-        feedback = {
-          ...feedback,
-          sentiment: sentimentAnalysis.sentiment,
-          sentimentScore: sentimentAnalysis.score,
-          sentimentConfidence: sentimentAnalysis.confidence,
-          category: sentimentAnalysis.category,
-        };
-        
-        // Save updated feedback (in a real app, this would be a database update)
-        storage['feedback'].set(feedback.id, feedback);
-      }
-      
-      res.status(201).json(feedback);
+      const locations = await storage.getAllLocations();
+      res.json(locations);
     } catch (error) {
-      console.error("Failed to create feedback:", error);
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid feedback data", errors: error.errors });
-      } else {
-        res.status(500).json({ message: "Failed to create feedback" });
-      }
+      console.error("Failed to fetch locations:", error);
+      res.status(500).json({ message: "Failed to fetch locations" });
     }
   });
 
-  // Analytics API
-  app.get("/api/analytics/stats", async (req, res) => {
+  // Dashboard API
+  app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     try {
-      const stats = await storage.getFeedbackStats();
+      const stats = await storage.getDashboardStats();
       res.json(stats);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch analytics stats" });
-    }
-  });
-
-  // Export API
-  app.get("/api/export/feedback", async (req, res) => {
-    try {
-      const { format } = req.query;
-      const feedback = await storage.getFeedback();
-      
-      if (format === 'csv') {
-        // Simple CSV export
-        const csvHeaders = 'ID,Form ID,Sentiment,Score,Category,Created At,Responses\n';
-        const csvRows = feedback.map(f => 
-          `"${f.id}","${f.formId}","${f.sentiment}","${f.sentimentScore}","${f.category}","${f.createdAt?.toISOString()}","${JSON.stringify(f.responses).replace(/"/g, '""')}"`
-        ).join('\n');
-        
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename="feedback-export.csv"');
-        res.send(csvHeaders + csvRows);
-      } else {
-        res.json(feedback);
-      }
-    } catch (error) {
-      res.status(500).json({ message: "Failed to export feedback data" });
+      console.error("Failed to fetch dashboard stats:", error);
+      res.status(500).json({ message: "Failed to fetch dashboard stats" });
     }
   });
 

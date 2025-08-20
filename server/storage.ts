@@ -1,254 +1,302 @@
 import { 
-  type User, 
-  type InsertUser, 
-  type BrandTemplate, 
-  type InsertBrandTemplate,
-  type FeedbackForm,
-  type InsertFeedbackForm,
-  type Feedback,
-  type InsertFeedback
+  type Employee,
+  type InsertEmployee,
+  type Device,
+  type InsertDevice,
+  type DeviceCheck,
+  type InsertDeviceCheck,
+  type DeviceWithChecks,
+  type DeviceCheckWithRelations,
+  type LoginCredentials,
+  employees,
+  devices,
+  deviceChecks
 } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, and, desc, asc, gte, lte, sql, count } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 export interface IStorage {
-  // User operations
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Employee authentication operations
+  getEmployeeById(id: string): Promise<Employee | undefined>;
+  getEmployeeByEmail(email: string): Promise<Employee | undefined>;
+  createEmployee(employee: InsertEmployee): Promise<Employee>;
+  authenticateEmployee(credentials: LoginCredentials): Promise<Employee | null>;
 
-  // Brand template operations
-  getBrandTemplates(): Promise<BrandTemplate[]>;
-  getBrandTemplate(id: string): Promise<BrandTemplate | undefined>;
-  createBrandTemplate(template: InsertBrandTemplate): Promise<BrandTemplate>;
-  updateBrandTemplate(id: string, updates: Partial<InsertBrandTemplate>): Promise<BrandTemplate | undefined>;
-  deleteBrandTemplate(id: string): Promise<boolean>;
+  // Device operations
+  getDevices(location?: string): Promise<DeviceWithChecks[]>;
+  getDeviceById(id: string): Promise<DeviceWithChecks | undefined>;
+  createDevice(device: InsertDevice): Promise<Device>;
+  updateDevice(id: string, updates: Partial<InsertDevice>): Promise<Device | undefined>;
+  deleteDevice(id: string): Promise<boolean>;
+  getDevicesByLocation(location: string): Promise<DeviceWithChecks[]>;
+  getAllLocations(): Promise<string[]>;
 
-  // Feedback form operations
-  getFeedbackForms(): Promise<FeedbackForm[]>;
-  getFeedbackForm(id: string): Promise<FeedbackForm | undefined>;
-  createFeedbackForm(form: InsertFeedbackForm): Promise<FeedbackForm>;
-  updateFeedbackForm(id: string, updates: Partial<InsertFeedbackForm>): Promise<FeedbackForm | undefined>;
-  deleteFeedbackForm(id: string): Promise<boolean>;
-
-  // Feedback operations
-  getFeedback(formId?: string): Promise<Feedback[]>;
-  getFeedbackById(id: string): Promise<Feedback | undefined>;
-  createFeedback(feedback: InsertFeedback): Promise<Feedback>;
-  getFeedbackStats(): Promise<{
-    total: number;
-    positive: number;
-    negative: number;
-    neutral: number;
-    responseRate: number;
-    categories: Record<string, number>;
+  // Device check operations
+  getDeviceChecks(deviceId?: string): Promise<DeviceCheckWithRelations[]>;
+  createDeviceCheck(check: InsertDeviceCheck): Promise<DeviceCheck>;
+  getOverdueDevices(): Promise<DeviceWithChecks[]>;
+  getUpcomingChecks(daysAhead?: number): Promise<DeviceWithChecks[]>;
+  
+  // Dashboard statistics
+  getDashboardStats(): Promise<{
+    totalDevices: number;
+    activeDevices: number;
+    overdueChecks: number;
+    completedThisWeek: number;
+    devicesByLocation: Record<string, number>;
+    recentChecks: DeviceCheckWithRelations[];
   }>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User> = new Map();
-  private brandTemplates: Map<string, BrandTemplate> = new Map();
-  private feedbackForms: Map<string, FeedbackForm> = new Map();
-  private feedback: Map<string, Feedback> = new Map();
-
-  constructor() {
-    this.seedData();
+export class DatabaseStorage implements IStorage {
+  // Employee authentication operations
+  async getEmployeeById(id: string): Promise<Employee | undefined> {
+    const [employee] = await db.select().from(employees).where(eq(employees.id, id));
+    return employee || undefined;
   }
 
-  private seedData() {
-    // Create default brand template
-    const defaultTemplate: BrandTemplate = {
-      id: randomUUID(),
-      name: "TechCorp Default",
-      description: "Primary brand template",
-      primaryColor: "#2563EB",
-      secondaryColor: "#64748B",
-      logoUrl: null,
-      isActive: true,
-      createdAt: new Date(),
-    };
-    this.brandTemplates.set(defaultTemplate.id, defaultTemplate);
-
-    // Create default user
-    const defaultUser: User = {
-      id: randomUUID(),
-      username: "admin",
-      password: "password",
-      name: "Sarah Johnson",
-      role: "admin",
-      createdAt: new Date(),
-    };
-    this.users.set(defaultUser.id, defaultUser);
-
-    // Create sample feedback form
-    const sampleForm: FeedbackForm = {
-      id: randomUUID(),
-      title: "Customer Satisfaction Survey",
-      description: "Help us improve by sharing your experience...",
-      brandTemplateId: defaultTemplate.id,
-      fields: [
-        {
-          id: "rating",
-          type: "rating",
-          label: "Overall Experience",
-          required: true,
-        },
-        {
-          id: "comments",
-          type: "textarea",
-          label: "Comments",
-          required: false,
-        }
-      ],
-      isPublished: true,
-      embedCode: `<iframe src="https://feedbackflow.app/embed/${randomUUID()}" width="100%" height="400"></iframe>`,
-      createdAt: new Date(),
-    };
-    this.feedbackForms.set(sampleForm.id, sampleForm);
+  async getEmployeeByEmail(email: string): Promise<Employee | undefined> {
+    const [employee] = await db.select().from(employees).where(eq(employees.email, email));
+    return employee || undefined;
   }
 
-  // User operations
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { 
-      ...insertUser, 
-      id,
-      createdAt: new Date(),
-    };
-    this.users.set(id, user);
-    return user;
-  }
-
-  // Brand template operations
-  async getBrandTemplates(): Promise<BrandTemplate[]> {
-    return Array.from(this.brandTemplates.values());
-  }
-
-  async getBrandTemplate(id: string): Promise<BrandTemplate | undefined> {
-    return this.brandTemplates.get(id);
-  }
-
-  async createBrandTemplate(template: InsertBrandTemplate): Promise<BrandTemplate> {
-    const id = randomUUID();
-    const brandTemplate: BrandTemplate = {
-      ...template,
-      id,
-      createdAt: new Date(),
-    };
-    this.brandTemplates.set(id, brandTemplate);
-    return brandTemplate;
-  }
-
-  async updateBrandTemplate(id: string, updates: Partial<InsertBrandTemplate>): Promise<BrandTemplate | undefined> {
-    const template = this.brandTemplates.get(id);
-    if (!template) return undefined;
-
-    const updated = { ...template, ...updates };
-    this.brandTemplates.set(id, updated);
-    return updated;
-  }
-
-  async deleteBrandTemplate(id: string): Promise<boolean> {
-    return this.brandTemplates.delete(id);
-  }
-
-  // Feedback form operations
-  async getFeedbackForms(): Promise<FeedbackForm[]> {
-    return Array.from(this.feedbackForms.values());
-  }
-
-  async getFeedbackForm(id: string): Promise<FeedbackForm | undefined> {
-    return this.feedbackForms.get(id);
-  }
-
-  async createFeedbackForm(form: InsertFeedbackForm): Promise<FeedbackForm> {
-    const id = randomUUID();
-    const feedbackForm: FeedbackForm = {
-      ...form,
-      id,
-      embedCode: `<iframe src="https://feedbackflow.app/embed/${id}" width="100%" height="400"></iframe>`,
-      createdAt: new Date(),
-    };
-    this.feedbackForms.set(id, feedbackForm);
-    return feedbackForm;
-  }
-
-  async updateFeedbackForm(id: string, updates: Partial<InsertFeedbackForm>): Promise<FeedbackForm | undefined> {
-    const form = this.feedbackForms.get(id);
-    if (!form) return undefined;
-
-    const updated = { ...form, ...updates };
-    this.feedbackForms.set(id, updated);
-    return updated;
-  }
-
-  async deleteFeedbackForm(id: string): Promise<boolean> {
-    return this.feedbackForms.delete(id);
-  }
-
-  // Feedback operations
-  async getFeedback(formId?: string): Promise<Feedback[]> {
-    const allFeedback = Array.from(this.feedback.values());
-    return formId ? allFeedback.filter(f => f.formId === formId) : allFeedback;
-  }
-
-  async getFeedbackById(id: string): Promise<Feedback | undefined> {
-    return this.feedback.get(id);
-  }
-
-  async createFeedback(insertFeedback: InsertFeedback): Promise<Feedback> {
-    const id = randomUUID();
-    const feedback: Feedback = {
-      ...insertFeedback,
-      id,
-      sentiment: "neutral",
-      sentimentScore: 3,
-      sentimentConfidence: 0,
-      category: "General",
-      createdAt: new Date(),
-    };
-    this.feedback.set(id, feedback);
-    return feedback;
-  }
-
-  async getFeedbackStats(): Promise<{
-    total: number;
-    positive: number;
-    negative: number;
-    neutral: number;
-    responseRate: number;
-    categories: Record<string, number>;
-  }> {
-    const allFeedback = Array.from(this.feedback.values());
-    const total = allFeedback.length;
+  async createEmployee(insertEmployee: InsertEmployee): Promise<Employee> {
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(insertEmployee.password, 12);
     
-    const positive = allFeedback.filter(f => f.sentiment === "positive").length;
-    const negative = allFeedback.filter(f => f.sentiment === "negative").length;
-    const neutral = allFeedback.filter(f => f.sentiment === "neutral").length;
+    const [employee] = await db
+      .insert(employees)
+      .values({
+        ...insertEmployee,
+        password: hashedPassword,
+      })
+      .returning();
+    return employee;
+  }
 
-    const categories: Record<string, number> = {};
-    allFeedback.forEach(f => {
-      if (f.category) {
-        categories[f.category] = (categories[f.category] || 0) + 1;
-      }
+  async authenticateEmployee(credentials: LoginCredentials): Promise<Employee | null> {
+    const employee = await this.getEmployeeByEmail(credentials.email);
+    if (!employee) return null;
+
+    const isValidPassword = await bcrypt.compare(credentials.password, employee.password);
+    if (!isValidPassword) return null;
+
+    return employee;
+  }
+
+  // Device operations
+  async getDevices(location?: string): Promise<DeviceWithChecks[]> {
+    const query = db
+      .select({
+        device: devices,
+        createdBy: employees,
+      })
+      .from(devices)
+      .leftJoin(employees, eq(devices.createdBy, employees.id));
+
+    const deviceResults = location 
+      ? await query.where(eq(devices.location, location))
+      : await query;
+
+    // Get checks for each device and calculate next scheduled check
+    const devicesWithChecks: DeviceWithChecks[] = [];
+    
+    for (const result of deviceResults) {
+      const deviceChecksResult = await db
+        .select({
+          check: deviceChecks,
+          checkedBy: employees,
+        })
+        .from(deviceChecks)
+        .leftJoin(employees, eq(deviceChecks.checkedBy, employees.id))
+        .where(eq(deviceChecks.deviceId, result.device.id))
+        .orderBy(desc(deviceChecks.completedDate));
+
+      const checks = deviceChecksResult.map(cr => ({
+        ...cr.check,
+        device: result.device,
+        checkedBy: cr.checkedBy!,
+      }));
+
+      const lastCheck = checks[0];
+      const nextScheduledCheck = lastCheck 
+        ? new Date(lastCheck.completedDate.getTime() + (result.device.plannedFrequencyWeeks * 7 * 24 * 60 * 60 * 1000))
+        : new Date(result.device.createdAt!.getTime() + (result.device.plannedFrequencyWeeks * 7 * 24 * 60 * 60 * 1000));
+
+      const isOverdue = nextScheduledCheck < new Date();
+
+      devicesWithChecks.push({
+        ...result.device,
+        checks: checks.map(c => ({
+          id: c.id,
+          deviceId: c.deviceId,
+          checkedBy: c.checkedBy,
+          scheduledDate: c.scheduledDate,
+          completedDate: c.completedDate,
+          status: c.status,
+          checkComment: c.checkComment,
+          isDelayed: c.isDelayed,
+          createdAt: c.createdAt,
+        })),
+        createdBy: result.createdBy,
+        lastCheck,
+        nextScheduledCheck,
+        isOverdue,
+      });
+    }
+
+    return devicesWithChecks;
+  }
+
+  async getDeviceById(id: string): Promise<DeviceWithChecks | undefined> {
+    const allDevices = await this.getDevices();
+    return allDevices.find(d => d.id === id);
+  }
+
+  async createDevice(insertDevice: InsertDevice): Promise<Device> {
+    const [device] = await db
+      .insert(devices)
+      .values(insertDevice)
+      .returning();
+    return device;
+  }
+
+  async updateDevice(id: string, updates: Partial<InsertDevice>): Promise<Device | undefined> {
+    const [updated] = await db
+      .update(devices)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(devices.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteDevice(id: string): Promise<boolean> {
+    // First delete all related checks
+    await db.delete(deviceChecks).where(eq(deviceChecks.deviceId, id));
+    
+    // Then delete the device
+    const result = await db.delete(devices).where(eq(devices.id, id));
+    return result.rowCount! > 0;
+  }
+
+  async getDevicesByLocation(location: string): Promise<DeviceWithChecks[]> {
+    return this.getDevices(location);
+  }
+
+  async getAllLocations(): Promise<string[]> {
+    const result = await db
+      .select({ location: devices.location })
+      .from(devices)
+      .groupBy(devices.location);
+    
+    return result.map(r => r.location);
+  }
+
+  // Device check operations
+  async getDeviceChecks(deviceId?: string): Promise<DeviceCheckWithRelations[]> {
+    const query = db
+      .select({
+        check: deviceChecks,
+        device: devices,
+        checkedBy: employees,
+      })
+      .from(deviceChecks)
+      .leftJoin(devices, eq(deviceChecks.deviceId, devices.id))
+      .leftJoin(employees, eq(deviceChecks.checkedBy, employees.id))
+      .orderBy(desc(deviceChecks.completedDate));
+
+    const results = deviceId 
+      ? await query.where(eq(deviceChecks.deviceId, deviceId))
+      : await query;
+
+    return results.map(r => ({
+      ...r.check,
+      device: r.device!,
+      checkedBy: r.checkedBy!,
+    }));
+  }
+
+  async createDeviceCheck(insertCheck: InsertDeviceCheck): Promise<DeviceCheck> {
+    const [check] = await db
+      .insert(deviceChecks)
+      .values(insertCheck)
+      .returning();
+    return check;
+  }
+
+  async getOverdueDevices(): Promise<DeviceWithChecks[]> {
+    const allDevices = await this.getDevices();
+    return allDevices.filter(d => d.isOverdue);
+  }
+
+  async getUpcomingChecks(daysAhead = 7): Promise<DeviceWithChecks[]> {
+    const allDevices = await this.getDevices();
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + daysAhead);
+    
+    return allDevices.filter(d => 
+      d.nextScheduledCheck && 
+      d.nextScheduledCheck <= futureDate && 
+      d.nextScheduledCheck >= new Date()
+    );
+  }
+
+  // Dashboard statistics
+  async getDashboardStats(): Promise<{
+    totalDevices: number;
+    activeDevices: number;
+    overdueChecks: number;
+    completedThisWeek: number;
+    devicesByLocation: Record<string, number>;
+    recentChecks: DeviceCheckWithRelations[];
+  }> {
+    const allDevices = await this.getDevices();
+    const totalDevices = allDevices.length;
+    const activeDevices = allDevices.filter(d => d.status === 'active').length;
+    const overdueChecks = allDevices.filter(d => d.isOverdue).length;
+
+    // Get completed checks this week
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const recentChecksResult = await db
+      .select({
+        check: deviceChecks,
+        device: devices,
+        checkedBy: employees,
+      })
+      .from(deviceChecks)
+      .leftJoin(devices, eq(deviceChecks.deviceId, devices.id))
+      .leftJoin(employees, eq(deviceChecks.checkedBy, employees.id))
+      .where(gte(deviceChecks.completedDate, oneWeekAgo))
+      .orderBy(desc(deviceChecks.completedDate))
+      .limit(10);
+
+    const recentChecks = recentChecksResult.map(r => ({
+      ...r.check,
+      device: r.device!,
+      checkedBy: r.checkedBy!,
+    }));
+
+    const completedThisWeek = recentChecks.length;
+
+    // Group devices by location
+    const devicesByLocation: Record<string, number> = {};
+    allDevices.forEach(device => {
+      devicesByLocation[device.location] = (devicesByLocation[device.location] || 0) + 1;
     });
 
     return {
-      total,
-      positive,
-      negative,
-      neutral,
-      responseRate: 84, // Mock response rate
-      categories,
+      totalDevices,
+      activeDevices,
+      overdueChecks,
+      completedThisWeek,
+      devicesByLocation,
+      recentChecks,
     };
   }
 }
 
-export const storage = new MemStorage();
+// Use database storage for production
+export const storage = new DatabaseStorage();
